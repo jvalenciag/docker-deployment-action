@@ -54,7 +54,7 @@ DEPLOYMENT_COMMAND_OPTIONS=""
 if [ "$INPUT_COPY_STACK_FILE" == "true" ]; then
   STACK_FILE="$INPUT_DEPLOY_PATH/$STACK_FILE"
 else
-  DEPLOYMENT_COMMAND_OPTIONS=" --log-level debug --host ssh://$INPUT_REMOTE_DOCKER_HOST:$INPUT_REMOTE_DOCKER_PORT"
+  DEPLOYMENT_COMMAND_OPTIONS="--host ssh://$INPUT_REMOTE_DOCKER_HOST:$INPUT_REMOTE_DOCKER_PORT"
 fi
 
 case $INPUT_DEPLOYMENT_MODE in
@@ -65,7 +65,7 @@ case $INPUT_DEPLOYMENT_MODE in
 
   *)
     INPUT_DEPLOYMENT_MODE="docker-compose"
-    DEPLOYMENT_COMMAND="docker-compose $DEPLOYMENT_COMMAND_OPTIONS -f $STACK_FILE"
+    DEPLOYMENT_COMMAND="docker compose -f $STACK_FILE"
   ;;
 esac
 
@@ -76,13 +76,15 @@ echo "Registering SSH keys..."
 
 # register the private key with the agent.
 mkdir -p "$HOME/.ssh"
-printf '%s\n' "$INPUT_SSH_PRIVATE_KEY" > "$HOME/.ssh/id_rsa"
-chmod 600 "$HOME/.ssh/id_rsa"
+printf '%s\n' "$INPUT_SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+chmod 600 "$HOME/.ssh/id_ed25519"
 eval $(ssh-agent)
-ssh-add "$HOME/.ssh/id_rsa"
+ssh-add "$HOME/.ssh/id_ed25519"
 
 echo "Add known hosts"
-printf '%s %s\n' "$SSH_HOST" "$INPUT_SSH_PUBLIC_KEY" > /etc/ssh/ssh_known_hosts
+ssh-keyscan -t ed25519 $SSH_HOST >> /etc/ssh/ssh_known_hosts
+
+export DOCKER_HOST="ssh://$INPUT_REMOTE_DOCKER_HOST:$INPUT_REMOTE_DOCKER_PORT"
 
 if ! [ -z "$INPUT_DOCKER_PRUNE" ] && [ $INPUT_DOCKER_PRUNE = 'true' ] ; then
   yes | docker --log-level debug --host "ssh://$INPUT_REMOTE_DOCKER_HOST:$INPUT_REMOTE_DOCKER_PORT" system prune -a 2>&1
@@ -113,4 +115,6 @@ if ! [ -z "$INPUT_COPY_STACK_FILE" ] && [ $INPUT_COPY_STACK_FILE = 'true' ] ; th
 else
   echo "Connecting to $INPUT_REMOTE_DOCKER_HOST... Command: ${DEPLOYMENT_COMMAND} ${INPUT_ARGS}"
   ${DEPLOYMENT_COMMAND} ${INPUT_ARGS} 2>&1
+  # yes | docker system prune 2>&1
+  ${DEPLOYMENT_COMMAND} exec -T web bundle exec rails db:migrate 2>&1
 fi
