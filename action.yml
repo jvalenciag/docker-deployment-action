@@ -8,7 +8,7 @@ inputs:
   remote_docker_port:
     description: Remote Docker ssh port ie (22)
     required: false
-    default: '22'
+    default: "22"
   ssh_public_key:
     description: Remote Docker SSH public key
     required: true
@@ -45,6 +45,9 @@ inputs:
   proxy_host:
     description: Proxy host jump ssh
     required: false
+  after_deploy_cmd:
+    description: After deploy command
+    required: false
 
 runs:
   using: docker
@@ -53,4 +56,3 @@ runs:
 branding:
   icon: send
   color: green
-

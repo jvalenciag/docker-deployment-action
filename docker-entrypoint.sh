@@ -3,7 +3,7 @@ set -eu
 
 execute_ssh(){
   echo "Execute Over SSH: $@"
-  ssh -q -t -i "$HOME/.ssh/id_rsa" \
+  ssh -q -t -i "$HOME/.ssh/id_ed25519" \
       -J $INPUT_PROXY_HOST \
       -o UserKnownHostsFile=/dev/null \
       -p $INPUT_REMOTE_DOCKER_PORT \
@@ -70,22 +70,47 @@ case $INPUT_DEPLOYMENT_MODE in
   ;;
 esac
 
+mkdir -p "$HOME/.ssh"
 
 SSH_HOST=${INPUT_REMOTE_DOCKER_HOST#*@}
+SSH_USER=${INPUT_REMOTE_DOCKER_HOST%@*}
+
+if [ "$INPUT_PROXY_HOST" ]; then
+
+  JUMP_HOST=${INPUT_PROXY_HOST#*@}
+
+  echo "Setuping ProxyJump"
+  printf '\n' >> "/etc/ssh/ssh_config"
+  printf '%s\n' "Host dockerhost" >> "/etc/ssh/ssh_config"
+  printf '  %s\n' "HostName $SSH_HOST" >> "/etc/ssh/ssh_config"
+  printf '  %s\n' "User $SSH_USER" >> "/etc/ssh/ssh_config"
+  printf '  %s\n' "ProxyJump $INPUT_PROXY_HOST" >> "/etc/ssh/ssh_config"
+  
+  # cat /etc/ssh/ssh_config
+
+  ssh-keyscan -t ed25519 $JUMP_HOST dockerhost >> /etc/ssh/ssh_known_hosts
+  DOCKER_REMOTE_HOST=dockerhost
+  echo "192.168.1.242 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJtJ+/7v9JuOQNbMZDbsWizOo6pgBRnuohc0F0Fp14sw" >> /etc/ssh/ssh_known_hosts 
+  echo "192.168.1.242 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBPNEf8lsMM3YJ183WXJMyB42oCJQcMx6ej7QfvVFSKrkzJdkYToJLNZlDxzXkQl6/5YMSBXOz5zRzeBDYRouqrA=" >> /etc/ssh/ssh_known_hosts
+else
+  DOCKER_REMOTE_HOST=$INPUT_REMOTE_DOCKER_HOST
+  ssh-keyscan -t ed25519 $SSH_HOST >> /etc/ssh/ssh_known_hosts
+fi
 
 echo "Registering SSH keys..."
 
 # register the private key with the agent.
-mkdir -p "$HOME/.ssh"
+
 printf '%s\n' "$INPUT_SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
 chmod 600 "$HOME/.ssh/id_ed25519"
 eval $(ssh-agent)
 ssh-add "$HOME/.ssh/id_ed25519"
 
 echo "Add known hosts"
-ssh-keyscan -t ed25519 $SSH_HOST >> /etc/ssh/ssh_known_hosts
+# ssh-keyscan -t ed25519 $SSH_HOST >> /etc/ssh/ssh_known_hosts
+# cat /etc/ssh/ssh_known_hosts
 
-export DOCKER_HOST="ssh://$INPUT_REMOTE_DOCKER_HOST:$INPUT_REMOTE_DOCKER_PORT"
+export DOCKER_HOST="ssh://$DOCKER_REMOTE_HOST:$INPUT_REMOTE_DOCKER_PORT"
 
 if ! [ -z "$INPUT_DOCKER_PRUNE" ] && [ $INPUT_DOCKER_PRUNE = 'true' ] ; then
   yes | docker --log-level debug --host "ssh://$INPUT_REMOTE_DOCKER_HOST:$INPUT_REMOTE_DOCKER_PORT" system prune -a 2>&1
@@ -118,5 +143,7 @@ else
   echo "Connecting to $INPUT_REMOTE_DOCKER_HOST... Command: ${DEPLOYMENT_COMMAND} ${INPUT_ARGS}"
   ${DEPLOYMENT_COMMAND} ${INPUT_ARGS} 2>&1
   # yes | docker system prune 2>&1
-  ${DEPLOYMENT_COMMAND} exec -T web bundle exec rails db:migrate 2>&1
+  if [ -z "$INPUT_AFTER_DEPLOY_CMD" ]; then
+    ${DEPLOYMENT_COMMAND} ${AFTER_DEPLOY_CMD} 2>&1
+  fi
 fi
