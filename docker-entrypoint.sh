@@ -4,6 +4,7 @@ set -eu
 execute_ssh(){
   echo "Execute Over SSH: $@"
   ssh -q -t -i "$HOME/.ssh/id_rsa" \
+      -J $INPUT_PROXY_HOST \
       -o UserKnownHostsFile=/dev/null \
       -p $INPUT_REMOTE_DOCKER_PORT \
       -o StrictHostKeyChecking=no "$INPUT_REMOTE_DOCKER_HOST" "$@"
@@ -94,7 +95,8 @@ if ! [ -z "$INPUT_COPY_STACK_FILE" ] && [ $INPUT_COPY_STACK_FILE = 'true' ] ; th
   execute_ssh "mkdir -p $INPUT_DEPLOY_PATH/stacks || true"
   FILE_NAME="docker-stack-$(date +%Y%m%d%s).yaml"
 
-  scp -i "$HOME/.ssh/id_rsa" \
+  scp -i "$HOME/.ssh/id_ed25519" \
+      -J $INPUT_PROXY_HOST \
       -o UserKnownHostsFile=/dev/null \
       -o StrictHostKeyChecking=no \
       -P $INPUT_REMOTE_DOCKER_PORT \
