@@ -42,6 +42,9 @@ inputs:
   pull_images_first:
     description: Pull docker images before deploying.
     required: false
+  proxy_host:
+    description: Proxy host jump ssh
+    required: false
 
 runs:
   using: docker
